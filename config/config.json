@@ -1,9 +1,9 @@
 {
   "development": {
-    "username": "harris",
-    "password": "ladBob",
-    "database": "users",
-    "host": "localhost",
+    "username": "dev_cost_est_user",
+    "password": "process.env.DB_PASSWD",
+    "database": "dev_backend_cost_est_db",
+    "host": "dev-staging-pg-costest-dashboard.postgres.database.azure.com",
     "dialect": "postgres"
   },
   "test": {
