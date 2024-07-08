@@ -8,7 +8,9 @@ const profileRoutes = require('./routes/profile');
 
 const app = express();
 
+// Middleware
 app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json()); // Add this line to parse JSON bodies
 app.use(session({
   secret: process.env.SECRET_KEY,
   resave: false,
@@ -17,9 +19,21 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
+// Routes
 app.use('/auth', authRoutes);
 app.use('/profile', profileRoutes);
 
+app.get('/', (_, res) => {
+  res.status(200).json({ message: 'Hello, world!' });
+})
+
+// Default error handler
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ message: 'Internal Server Error' });
+});
+
+// Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

@@ -2,11 +2,15 @@
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
 const bcrypt = require('./bcrypt');
-const { User } = require('../models');
+
+const sequelize = require('../utils/sequelize');
+const { DataTypes } = require('sequelize');
+
+const Contractor = require('../models/contractor')(sequelize, DataTypes);
 
 passport.use(new LocalStrategy(async (username, password, done) => {
   try {
-    const user = await User.findOne({ where: { username } });
+    const user = await Contractor.findOne({ where: { username } });
     if (!user) {
       return done(null, false, { message: 'Incorrect username.' });
     }
@@ -26,7 +30,7 @@ passport.serializeUser((user, done) => {
 
 passport.deserializeUser(async (id, done) => {
   try {
-    const user = await User.findByPk(id);
+    const user = await Contractor.findByPk(id);
     done(null, user);
   } catch (err) {
     done(err);
