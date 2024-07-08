@@ -5,6 +5,7 @@ const session = require('express-session');
 const passport = require('./utils/passport');
 const authRoutes = require('./routes/auth');
 const profileRoutes = require('./routes/profile');
+const indexRouter = require('./routes/index');
 
 const app = express();
 
@@ -20,12 +21,9 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 // Routes
+app.use('/', indexRouter);
 app.use('/auth', authRoutes);
 app.use('/profile', profileRoutes);
-
-app.get('/', (_, res) => {
-  res.status(200).json({ message: 'Hello, world!' });
-})
 
 // Default error handler
 app.use((err, req, res, next) => {
