@@ -4,9 +4,9 @@ const router = express.Router();
 
 router.get('/', (req, res) => {
   if (req.isAuthenticated()) {
-    res.send(`Hello, ${req.user.username}`);
+    res.status(200).json({ message: `Hello, ${req.user.username}` });
   } else {
-    res.redirect('/login');
+    res.status(401).json({ message: 'Unauthorized' });
   }
 });
 
