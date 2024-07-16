@@ -1,6 +1,3 @@
-# README.md
-
-```markdown
 # @harrisahmad/simpleauth
 
 A simple and extensible authentication system using Passport.js for session-based authentication.
