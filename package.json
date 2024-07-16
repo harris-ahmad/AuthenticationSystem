@@ -1,6 +1,6 @@
 {
   "name": "@harrisahmad/simpleauth",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "A simple authentication system using Passport.js",
   "main": "index.js",
   "scripts": {
