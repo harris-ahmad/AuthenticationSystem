@@ -38,12 +38,13 @@ Here is an example of how to use `simpleauth` in your Node.js application:
 Create a `.env` file to store environment variables:
 
 ```plaintext
-SECRET_KEY=your_secret_key
-DB_HOST=your_database_host
-DB_PORT=your_database_port
+DB_HOST=your_host
+DB_USER=your_user
+DB_PASSWD=your_password
 DB_NAME=your_database_name
-DB_USER=your_database_username
-DB_PASSWORD=your_database_password
+DB_PORT=5432
+DB_DIALECT=postgres
+SECRET_KEY=your_secret_key
 ```
 
 ### 2. Configure Your Application
