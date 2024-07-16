@@ -1,5 +1,7 @@
 # @harrisahmad/simpleauth
 
+Link to the package: [@harrisahmad/simpleauth](https://www.npmjs.com/package/@harrisahmad/simpleauth)
+
 A simple and extensible authentication system using Passport.js for session-based authentication.
 
 ## Installation
