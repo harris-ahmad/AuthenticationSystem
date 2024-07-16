@@ -1,40 +1,40 @@
-require('dotenv').config();
+// index.js
 const express = require('express');
 const bodyParser = require('body-parser');
 const session = require('express-session');
-const passport = require('./utils/passport');
+const passport = require('passport');
+const passportConfig = require('./utils/passport');
 const authRoutes = require('./routes/auth');
 const profileRoutes = require('./routes/profile');
 const indexRouter = require('./routes/index');
 
-const app = express();
+module.exports = function(app, options = {}) {
+  const { sessionSecret, usernameField = 'username', passwordField = 'password' } = options;
 
-// Middleware
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json()); // Add this line to parse JSON bodies
-app.use(session({
-  secret: process.env.SECRET_KEY,
-  resave: false,
-  saveUninitialized: false
-}));
-app.use(passport.initialize());
-app.use(passport.session());
+  // Middleware
+  app.use(bodyParser.urlencoded({ extended: false }));
+  app.use(bodyParser.json());
 
-// Routes
-app.use('/', indexRouter);
-app.use('/auth', authRoutes);
-app.use('/profile', profileRoutes);
+  // Session setup
+  app.use(session({
+    secret: sessionSecret,
+    resave: false,
+    saveUninitialized: false
+  }));
 
-// Default error handler
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ message: 'Internal Server Error' });
-});
+  // Initialize passport
+  passportConfig(passport, { usernameField, passwordField });
+  app.use(passport.initialize());
+  app.use(passport.session());
 
-// Start server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+  // Routes
+  app.use('/auth', authRoutes);
+  app.use('/profile', profileRoutes);
+  app.use('/', indexRouter);
 
-module.exports = app;
+  // Default error handler
+  app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).json({ message: 'Internal Server Error' });
+  });
+};
