@@ -1,12 +1,12 @@
 // routes/profile.js
-const express = require('express');
+const express = require("express");
 const router = express.Router();
 
-router.get('/', (req, res) => {
+router.get("/", (req, res) => {
   if (req.isAuthenticated()) {
     res.status(200).json({ message: `Hello, ${req.user.username}` });
   } else {
-    res.status(401).json({ message: 'Unauthorized' });
+    res.status(401).json({ message: "Unauthorized" });
   }
 });
 
