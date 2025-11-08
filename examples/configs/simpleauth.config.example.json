@@ -1,0 +1,29 @@
+{
+  "sessionSecret": "your-session-secret-here",
+  "usernameField": "username",
+  "passwordField": "password",
+  "security": {
+    "enableHelmet": true,
+    "enableCsrf": false,
+    "enableRateLimiting": true
+  },
+  "email": {
+    "host": "smtp.gmail.com",
+    "port": 587,
+    "secure": false,
+    "user": "your-email@gmail.com",
+    "pass": "your-app-password"
+  },
+  "oauth": {
+    "google": {
+      "clientID": "your-google-client-id",
+      "clientSecret": "your-google-client-secret",
+      "callbackURL": "http://localhost:3000/auth/oauth/google/callback"
+    },
+    "github": {
+      "clientID": "your-github-client-id",
+      "clientSecret": "your-github-client-secret",
+      "callbackURL": "http://localhost:3000/auth/oauth/github/callback"
+    }
+  }
+}

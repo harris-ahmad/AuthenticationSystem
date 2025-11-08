@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebAuthn / Passkeys Example</title>
+    <script src="https://unpkg.com/@simplewebauthn/browser@9.0.1/dist/bundle/index.umd.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+        button { padding: 10px 20px; margin: 10px 0; cursor: pointer; }
+        input { padding: 8px; width: 100%; margin: 10px 0; }
+        .section { margin: 30px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { color: green; }
+        .error { color: red; }
+        pre { background: #f4f4f4; padding: 10px; border-radius: 3px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>WebAuthn / Passkeys Demo</h1>
+
+    <!-- Registration Section -->
+    <div class="section">
+        <h2>Register a Passkey</h2>
+        <p>First, login with your password, then register a passkey (Face ID, Touch ID, etc.)</p>
+        <input type="text" id="regAccessToken" placeholder="Access Token (from login)">
+        <input type="text" id="credentialName" placeholder="Passkey Name (e.g., 'My iPhone')">
+        <button onclick="registerPasskey()">Register Passkey</button>
+        <div id="regResult"></div>
+    </div>
+
+    <!-- Login Section -->
+    <div class="section">
+        <h2>Login with Passkey</h2>
+        <p>Login using your passkey - no password needed!</p>
+        <input type="text" id="loginUsername" placeholder="Username">
+        <button onclick="loginWithPasskey()">Login with Passkey</button>
+        <div id="loginResult"></div>
+    </div>
+
+    <!-- List Credentials Section -->
+    <div class="section">
+        <h2>My Passkeys</h2>
+        <input type="text" id="listAccessToken" placeholder="Access Token">
+        <button onclick="listCredentials()">List My Passkeys</button>
+        <div id="credentialsList"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3000';
+        const { startRegistration, startAuthentication } = SimpleWebAuthnBrowser;
+
+        async function registerPasskey() {
+            const accessToken = document.getElementById('regAccessToken').value;
+            const credentialName = document.getElementById('credentialName').value || 'My Passkey';
+            const resultDiv = document.getElementById('regResult');
+
+            try {
+                resultDiv.innerHTML = 'Requesting registration options...';
+
+                const optionsRes = await fetch(`${API_URL}/auth/webauthn/register/options`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json',
+                    },
+                });
+
+                const { options } = await optionsRes.json();
+
+                resultDiv.innerHTML = 'Please use your biometric...';
+
+                const attResp = await startRegistration(options);
+
+                resultDiv.innerHTML = 'Verifying...';
+
+                const verifyRes = await fetch(`${API_URL}/auth/webauthn/register/verify`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        response: attResp,
+                        credentialName,
+                    }),
+                });
+
+                const result = await verifyRes.json();
+
+                if (result.success) {
+                    resultDiv.innerHTML = `<div class="success">✓ Passkey registered successfully!</div>`;
+                } else {
+                    resultDiv.innerHTML = `<div class="error">✗ ${result.message}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">✗ Error: ${error.message}</div>`;
+            }
+        }
+
+        async function loginWithPasskey() {
+            const username = document.getElementById('loginUsername').value;
+            const resultDiv = document.getElementById('loginResult');
+
+            try {
+                resultDiv.innerHTML = 'Requesting authentication options...';
+
+                const optionsRes = await fetch(`${API_URL}/auth/webauthn/login/options`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username }),
+                });
+
+                const { options } = await optionsRes.json();
+
+                resultDiv.innerHTML = 'Please use your biometric...';
+
+                const asseResp = await startAuthentication(options);
+
+                resultDiv.innerHTML = 'Verifying...';
+
+                const verifyRes = await fetch(`${API_URL}/auth/webauthn/login/verify`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        response: asseResp,
+                        username,
+                    }),
+                });
+
+                const result = await verifyRes.json();
+
+                if (result.success) {
+                    resultDiv.innerHTML = `
+                        <div class="success">✓ Login successful!</div>
+                        <pre>Access Token: ${result.accessToken}</pre>
+                        <pre>Risk Score: ${result.riskScore} (${result.riskLevel})</pre>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<div class="error">✗ ${result.message}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">✗ Error: ${error.message}</div>`;
+            }
+        }
+
+        async function listCredentials() {
+            const accessToken = document.getElementById('listAccessToken').value;
+            const resultDiv = document.getElementById('credentialsList');
+
+            try {
+                const res = await fetch(`${API_URL}/auth/webauthn/credentials`, {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                    },
+                });
+
+                const { credentials } = await res.json();
+
+                if (credentials.length === 0) {
+                    resultDiv.innerHTML = '<p>No passkeys registered</p>';
+                    return;
+                }
+
+                let html = '<ul>';
+                credentials.forEach(cred => {
+                    html += `
+                        <li>
+                            <strong>${cred.name}</strong><br>
+                            Device: ${cred.credentialDeviceType || 'Unknown'}<br>
+                            Created: ${new Date(cred.createdAt).toLocaleDateString()}<br>
+                            Last used: ${cred.lastUsedAt ? new Date(cred.lastUsedAt).toLocaleDateString() : 'Never'}
+                        </li>
+                    `;
+                });
+                html += '</ul>';
+
+                resultDiv.innerHTML = html;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">✗ Error: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>
