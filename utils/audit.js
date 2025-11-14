@@ -1,28 +1,14 @@
-const sequelize = require("./sequelize");
-const { DataTypes } = require("sequelize");
-
-let AuditLog = null;
-
-const initializeAuditLog = () => {
-  if (!AuditLog) {
-    try {
-      AuditLog = require("../models/auditLog")(sequelize, DataTypes);
-    } catch (err) {
-      console.error("Failed to initialize AuditLog model:", err.message);
-    }
-  }
-};
+const { isConnected } = require("./database");
+const db = require("../common/db");
 
 const logEvent = async (data) => {
   try {
-    initializeAuditLog();
-
-    if (!AuditLog) {
-      console.warn("AuditLog model not available. Skipping audit log.");
+    if (!isConnected()) {
+      console.warn("Database not connected. Skipping audit log.");
       return null;
     }
 
-    const log = await AuditLog.create({
+    const log = await db.create("AuditLog", {
       userId: data.userId || null,
       action: data.action,
       resource: data.resource || null,
@@ -30,106 +16,62 @@ const logEvent = async (data) => {
       ipAddress: data.ipAddress || null,
       userAgent: data.userAgent || null,
       metadata: data.metadata || null,
-    });
+    })
 
     return log;
   } catch (err) {
-    console.error("Audit logging error:", err.message);
+    console.error("Audit logging error:", err);
     return null;
   }
 };
 
-const logLogin = async (userId, status, req, metadata = {}) => {
-  return await logEvent({
-    userId,
-    action: "LOGIN",
-    status,
-    ipAddress: req.ip || req.connection?.remoteAddress,
-    userAgent: req.get("user-agent"),
-    metadata,
-  });
+const createAuditLogger = (action, defaultStatus = null) => {
+  return async (userId, statusOrReq, reqOrMetadata = {}, metadata = {}) => {
+    let status, req, actualMetadata;
+    
+    if (typeof statusOrReq === 'object' && (statusOrReq.ip || statusOrReq.get)) {
+      req = statusOrReq;
+      status = defaultStatus || "SUCCESS";
+      actualMetadata = reqOrMetadata;
+    } else {
+      status = statusOrReq;
+      req = reqOrMetadata;
+      actualMetadata = metadata;
+    }
+
+    return await logEvent({
+      userId,
+      action,
+      status,
+      ipAddress: req.ip || req.connection?.remoteAddress,
+      userAgent: req.get("user-agent"),
+      metadata: actualMetadata,
+    });
+  };
 };
 
-const logLogout = async (userId, req) => {
-  return await logEvent({
-    userId,
-    action: "LOGOUT",
-    status: "SUCCESS",
-    ipAddress: req.ip || req.connection?.remoteAddress,
-    userAgent: req.get("user-agent"),
-  });
+const createOAuthLogger = () => {
+  return async (userId, provider, status, req) => {
+    return await logEvent({
+      userId,
+      action: "OAUTH_LOGIN",
+      resource: provider,
+      status,
+      ipAddress: req.ip || req.connection?.remoteAddress,
+      userAgent: req.get("user-agent"),
+    });
+  };
 };
 
-const logRegistration = async (userId, status, req) => {
-  return await logEvent({
-    userId,
-    action: "REGISTER",
-    status,
-    ipAddress: req.ip || req.connection?.remoteAddress,
-    userAgent: req.get("user-agent"),
-  });
-};
-
-const logPasswordReset = async (userId, status, req) => {
-  return await logEvent({
-    userId,
-    action: "PASSWORD_RESET",
-    status,
-    ipAddress: req.ip || req.connection?.remoteAddress,
-    userAgent: req.get("user-agent"),
-  });
-};
-
-const logPasswordChange = async (userId, status, req) => {
-  return await logEvent({
-    userId,
-    action: "PASSWORD_CHANGE",
-    status,
-    ipAddress: req.ip || req.connection?.remoteAddress,
-    userAgent: req.get("user-agent"),
-  });
-};
-
-const log2FAEnable = async (userId, status, req) => {
-  return await logEvent({
-    userId,
-    action: "2FA_ENABLE",
-    status,
-    ipAddress: req.ip || req.connection?.remoteAddress,
-    userAgent: req.get("user-agent"),
-  });
-};
-
-const log2FADisable = async (userId, status, req) => {
-  return await logEvent({
-    userId,
-    action: "2FA_DISABLE",
-    status,
-    ipAddress: req.ip || req.connection?.remoteAddress,
-    userAgent: req.get("user-agent"),
-  });
-};
-
-const logEmailVerification = async (userId, status, req) => {
-  return await logEvent({
-    userId,
-    action: "EMAIL_VERIFY",
-    status,
-    ipAddress: req.ip || req.connection?.remoteAddress,
-    userAgent: req.get("user-agent"),
-  });
-};
-
-const logOAuthLogin = async (userId, provider, status, req) => {
-  return await logEvent({
-    userId,
-    action: "OAUTH_LOGIN",
-    resource: provider,
-    status,
-    ipAddress: req.ip || req.connection?.remoteAddress,
-    userAgent: req.get("user-agent"),
-  });
-};
+const logLogin = createAuditLogger("LOGIN");
+const logLogout = createAuditLogger("LOGOUT", "SUCCESS");
+const logRegistration = createAuditLogger("REGISTER");
+const logPasswordReset = createAuditLogger("PASSWORD_RESET");
+const logPasswordChange = createAuditLogger("PASSWORD_CHANGE");
+const log2FAEnable = createAuditLogger("2FA_ENABLE");
+const log2FADisable = createAuditLogger("2FA_DISABLE");
+const logEmailVerification = createAuditLogger("EMAIL_VERIFY");
+const logOAuthLogin = createOAuthLogger();
 
 module.exports = {
   logEvent,

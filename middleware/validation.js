@@ -105,7 +105,7 @@ const changePasswordValidation = [
 ];
 
 // Middleware to handle validation results
-const al = (req, res, next) => {
+const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({

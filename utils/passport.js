@@ -2,24 +2,17 @@ const LocalStrategy = require("passport-local").Strategy;
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const GitHubStrategy = require("passport-github2").Strategy;
 const bcrypt = require("./bcrypt");
-const sequelize = require("./sequelize");
-const { DataTypes } = require("sequelize");
-
-let User;
-
-const initializeModels = () => {
-  if (!User) User = require("../models/user")(sequelize, DataTypes);
-};
+const db = require("../common/db");
 
 module.exports = function (passport, options = {}) {
-  initializeModels();
 
   const { usernameField = "username", passwordField = "password" } = options;
 
   passport.use(
     new LocalStrategy({ usernameField, passwordField }, async (username, password, done) => {
       try {
-        const user = await User.findOne({ where: { [usernameField]: username } });
+        const user = await db.findOne("User", { [usernameField]: username });
+
         if (!user) {
           return done(null, false, { message: "Incorrect username." });
         }
@@ -54,9 +47,7 @@ module.exports = function (passport, options = {}) {
         },
         async (accessToken, refreshToken, profile, done) => {
           try {
-            let user = await User.findOne({
-              where: { provider: "google", providerId: profile.id },
-            });
+            let user = await db.findOne("User", { provider: "google", providerId: profile.id });
 
             if (!user) {
               const email = profile.emails && profile.emails[0] ? profile.emails[0].value : null;
@@ -64,7 +55,7 @@ module.exports = function (passport, options = {}) {
                 profile.displayName?.replace(/\s+/g, "_").toLowerCase() ||
                 `google_${profile.id}`;
 
-              user = await User.create({
+              user = await db.create("User", {
                 username,
                 email,
                 provider: "google",
@@ -93,15 +84,13 @@ module.exports = function (passport, options = {}) {
         },
         async (accessToken, refreshToken, profile, done) => {
           try {
-            let user = await User.findOne({
-              where: { provider: "github", providerId: profile.id },
-            });
+            let user = await db.findOne("User", { provider: "github", providerId: profile.id });
 
             if (!user) {
               const email = profile.emails && profile.emails[0] ? profile.emails[0].value : null;
               const username = profile.username || `github_${profile.id}`;
 
-              user = await User.create({
+              user = await db.create("User", {
                 username,
                 email,
                 provider: "github",
@@ -121,12 +110,13 @@ module.exports = function (passport, options = {}) {
   }
 
   passport.serializeUser((user, done) => {
-    done(null, user.id);
+    done(null, user.id || user._id);
   });
 
   passport.deserializeUser(async (id, done) => {
     try {
-      const user = await User.findByPk(id);
+      const user = await db.findById("User", id);
+
       done(null, user);
     } catch (err) {
       done(err);

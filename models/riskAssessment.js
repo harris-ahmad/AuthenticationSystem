@@ -5,18 +5,18 @@ require("dotenv").config({ path: path.join(__dirname, '..', '.env') });
 const dbType = process.env.DB_TYPE || "postgres";
 
 if (dbType === "mongodb") {
-  module.exports = require("../schemas/AuditLog");
+  module.exports = require("../schemas/RiskAssessment");
 } else {
   const { Model } = require("sequelize");
 
   module.exports = (sequelize, DataTypes) => {
-    class AuditLog extends Model {
+    class RiskAssessment extends Model {
       static associate(models) {
-        AuditLog.belongsTo(models.User, { foreignKey: "userId", as: "user" });
+        RiskAssessment.belongsTo(models.User, { foreignKey: "userId", as: "user" });
       }
     }
 
-    AuditLog.init(
+    RiskAssessment.init(
       {
         id: {
           type: DataTypes.UUID,
@@ -36,21 +36,29 @@ if (dbType === "mongodb") {
           type: DataTypes.STRING,
           allowNull: false,
         },
-        resource: {
-          type: DataTypes.STRING,
-          allowNull: true,
-        },
-        status: {
-          type: DataTypes.STRING,
-          allowNull: false,
-        },
         ipAddress: {
           type: DataTypes.STRING,
           allowNull: true,
         },
-        userAgent: {
+        deviceFingerprint: {
           type: DataTypes.STRING,
           allowNull: true,
+        },
+        riskScore: {
+          type: DataTypes.INTEGER,
+          allowNull: false,
+        },
+        riskLevel: {
+          type: DataTypes.ENUM("low", "medium", "high", "critical"),
+          allowNull: false,
+        },
+        factors: {
+          type: DataTypes.JSONB,
+          allowNull: false,
+        },
+        decision: {
+          type: DataTypes.STRING,
+          allowNull: false,
         },
         metadata: {
           type: DataTypes.JSONB,
@@ -59,19 +67,19 @@ if (dbType === "mongodb") {
       },
       {
         sequelize,
-        modelName: "AuditLog",
-        tableName: "audit_logs",
+        modelName: "RiskAssessment",
+        tableName: "risk_assessments",
         timestamps: true,
         updatedAt: false,
         indexes: [
           { fields: ["userId"] },
-          { fields: ["action"] },
-          { fields: ["status"] },
+          { fields: ["riskLevel"] },
+          { fields: ["riskScore"] },
           { fields: ["createdAt"] },
         ],
       }
     );
 
-    return AuditLog;
+    return RiskAssessment;
   };
 }

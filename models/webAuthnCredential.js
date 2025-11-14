@@ -5,22 +5,18 @@ require("dotenv").config({ path: path.join(__dirname, '..', '.env') });
 const dbType = process.env.DB_TYPE || "postgres";
 
 if (dbType === "mongodb") {
-  module.exports = require("../schemas/Session");
+  module.exports = require("../schemas/WebAuthnCredential");
 } else {
   const { Model } = require("sequelize");
 
   module.exports = (sequelize, DataTypes) => {
-    class Session extends Model {
+    class WebAuthnCredential extends Model {
       static associate(models) {
-        Session.belongsTo(models.User, { foreignKey: "userId", as: "user" });
-      }
-
-      isExpired() {
-        return Date.now() >= this.expiresAt.getTime();
+        WebAuthnCredential.belongsTo(models.User, { foreignKey: "userId", as: "user" });
       }
     }
 
-    Session.init(
+    WebAuthnCredential.init(
       {
         id: {
           type: DataTypes.UUID,
@@ -36,41 +32,57 @@ if (dbType === "mongodb") {
           },
           onDelete: "CASCADE",
         },
-        sessionId: {
-          type: DataTypes.STRING,
+        credentialID: {
+          type: DataTypes.TEXT,
           allowNull: false,
           unique: true,
         },
-        expiresAt: {
-          type: DataTypes.DATE,
+        credentialPublicKey: {
+          type: DataTypes.TEXT,
           allowNull: false,
         },
-        deviceInfo: {
-          type: DataTypes.JSONB,
-          allowNull: true,
+        counter: {
+          type: DataTypes.BIGINT,
+          allowNull: false,
+          defaultValue: 0,
         },
-        ipAddress: {
+        credentialDeviceType: {
           type: DataTypes.STRING,
           allowNull: true,
         },
-        lastActivityAt: {
+        credentialBackedUp: {
+          type: DataTypes.BOOLEAN,
+          allowNull: true,
+        },
+        transports: {
+          type: DataTypes.ARRAY(DataTypes.STRING),
+          allowNull: true,
+        },
+        aaguid: {
+          type: DataTypes.STRING,
+          allowNull: true,
+        },
+        name: {
+          type: DataTypes.STRING,
+          allowNull: true,
+        },
+        lastUsedAt: {
           type: DataTypes.DATE,
           allowNull: true,
         },
       },
       {
         sequelize,
-        modelName: "Session",
-        tableName: "sessions",
+        modelName: "WebAuthnCredential",
+        tableName: "webauthn_credentials",
         timestamps: true,
         indexes: [
           { fields: ["userId"] },
-          { fields: ["sessionId"] },
-          { fields: ["expiresAt"] },
+          { fields: ["credentialID"] },
         ],
       }
     );
 
-    return Session;
+    return WebAuthnCredential;
   };
 }

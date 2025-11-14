@@ -5,18 +5,18 @@ require("dotenv").config({ path: path.join(__dirname, '..', '.env') });
 const dbType = process.env.DB_TYPE || "postgres";
 
 if (dbType === "mongodb") {
-  module.exports = require("../schemas/AuditLog");
+  module.exports = require("../schemas/LoginHistory");
 } else {
   const { Model } = require("sequelize");
 
   module.exports = (sequelize, DataTypes) => {
-    class AuditLog extends Model {
+    class LoginHistory extends Model {
       static associate(models) {
-        AuditLog.belongsTo(models.User, { foreignKey: "userId", as: "user" });
+        LoginHistory.belongsTo(models.User, { foreignKey: "userId", as: "user" });
       }
     }
 
-    AuditLog.init(
+    LoginHistory.init(
       {
         id: {
           type: DataTypes.UUID,
@@ -32,17 +32,9 @@ if (dbType === "mongodb") {
           },
           onDelete: "SET NULL",
         },
-        action: {
-          type: DataTypes.STRING,
-          allowNull: false,
-        },
-        resource: {
+        username: {
           type: DataTypes.STRING,
           allowNull: true,
-        },
-        status: {
-          type: DataTypes.STRING,
-          allowNull: false,
         },
         ipAddress: {
           type: DataTypes.STRING,
@@ -52,26 +44,54 @@ if (dbType === "mongodb") {
           type: DataTypes.STRING,
           allowNull: true,
         },
-        metadata: {
+        deviceFingerprint: {
+          type: DataTypes.STRING,
+          allowNull: true,
+        },
+        location: {
           type: DataTypes.JSONB,
           allowNull: true,
+        },
+        success: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+        },
+        failureReason: {
+          type: DataTypes.STRING,
+          allowNull: true,
+        },
+        riskScore: {
+          type: DataTypes.INTEGER,
+          allowNull: true,
+        },
+        riskFactors: {
+          type: DataTypes.JSONB,
+          allowNull: true,
+        },
+        actionTaken: {
+          type: DataTypes.STRING,
+          allowNull: true,
+        },
+        timestamp: {
+          type: DataTypes.DATE,
+          defaultValue: DataTypes.NOW,
         },
       },
       {
         sequelize,
-        modelName: "AuditLog",
-        tableName: "audit_logs",
-        timestamps: true,
-        updatedAt: false,
+        modelName: "LoginHistory",
+        tableName: "login_history",
+        timestamps: false,
         indexes: [
           { fields: ["userId"] },
-          { fields: ["action"] },
-          { fields: ["status"] },
-          { fields: ["createdAt"] },
+          { fields: ["ipAddress"] },
+          { fields: ["timestamp"] },
+          { fields: ["success"] },
+          { fields: ["riskScore"] },
         ],
       }
     );
 
-    return AuditLog;
+    return LoginHistory;
   };
 }

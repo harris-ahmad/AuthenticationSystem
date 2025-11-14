@@ -8,13 +8,21 @@ const initializeTransporter = (config) => {
     return null;
   }
 
+  const user = config.user || process.env.EMAIL_USER;
+  const pass = config.pass || process.env.EMAIL_PASS;
+
+  if (!user || !pass) {
+    console.warn("Email credentials not provided. Email functionality will be disabled.");
+    return null;
+  }
+
   transporter = nodemailer.createTransport({
     host: config.host || process.env.EMAIL_HOST,
     port: config.port || process.env.EMAIL_PORT || 587,
     secure: config.secure || process.env.EMAIL_SECURE === "true",
     auth: {
-      user: config.user || process.env.EMAIL_USER,
-      pass: config.pass || process.env.EMAIL_PASS,
+      user,
+      pass,
     },
   });
 

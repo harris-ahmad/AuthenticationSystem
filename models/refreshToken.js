@@ -1,8 +1,16 @@
 "use strict";
-const { Model } = require("sequelize");
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, '..', '.env') });
 
-module.exports = (sequelize, DataTypes) => {
-  class RefreshToken extends Model {
+const dbType = process.env.DB_TYPE || "postgres";
+
+if (dbType === "mongodb") {
+  module.exports = require("../schemas/RefreshToken");
+} else {
+  const { Model } = require("sequelize");
+
+  module.exports = (sequelize, DataTypes) => {
+    class RefreshToken extends Model {
     static associate(models) {
       RefreshToken.belongsTo(models.User, { foreignKey: "userId", as: "user" });
     }
@@ -64,4 +72,5 @@ module.exports = (sequelize, DataTypes) => {
   );
 
   return RefreshToken;
-};
+  };
+}
