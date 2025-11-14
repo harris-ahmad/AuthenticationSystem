@@ -7,8 +7,9 @@ const jwt = require("../utils/jwt");
 const twoFactor = require("../utils/twoFactor");
 const email = require("../utils/email");
 const audit = require("../utils/audit");
-const sequelize = require("../utils/sequelize");
-const { DataTypes } = require("sequelize");
+const riskEngine = require("../utils/riskEngine");
+const deviceFingerprinting = require("../utils/deviceFingerprinting");
+const db = require("../common/db");
 
 const {
   registerValidation,
@@ -29,28 +30,14 @@ const {
 
 const { isAuthenticated } = require("../middleware/auth");
 
-let User, RefreshToken;
-
-const initializeModels = () => {
-  if (!User) User = require("../models/user")(sequelize, DataTypes);
-  if (!RefreshToken) RefreshToken = require("../models/refreshToken")(sequelize, DataTypes);
-};
-
 router.post("/register", registerLimiter, registerValidation, handleValidationErrors, async (req, res, next) => {
   try {
-    initializeModels();
     const { username, email: userEmail, password } = req.body;
 
-    const existingUser = await User.findOne({
-      where: {
-        [sequelize.Sequelize.Op.or]: [
-          { username },
-          ...(userEmail ? [{ email: userEmail }] : []),
-        ],
-      },
-    });
+    const existingByUsername = await db.findOne("User", { username });
+    const existingByEmail = userEmail ? await db.findOne("User", { email: userEmail }) : null;
 
-    if (existingUser) {
+    if (existingByUsername || existingByEmail) {
       await audit.logRegistration(null, "FAILED", req);
       return res.status(400).json({
         success: false,
@@ -62,7 +49,7 @@ router.post("/register", registerLimiter, registerValidation, handleValidationEr
     const emailVerificationToken = crypto.randomBytes(32).toString("hex");
     const emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    const user = await User.create({
+    const user = await db.create("User", {
       username,
       email: userEmail || null,
       password: hashedPassword,
@@ -93,10 +80,9 @@ router.post("/register", registerLimiter, registerValidation, handleValidationEr
 
 router.post("/login", loginLimiter, loginValidation, handleValidationErrors, async (req, res, next) => {
   try {
-    initializeModels();
     const { username, password } = req.body;
 
-    const user = await User.findOne({ where: { username } });
+    const user = await db.findOne("User", { username });
 
     if (!user) {
       await audit.logLogin(null, "FAILED", req, { reason: "user_not_found" });
@@ -119,20 +105,23 @@ router.post("/login", loginLimiter, loginValidation, handleValidationErrors, asy
     const isMatch = await bcrypt.comparePassword(password, user.password);
 
     if (!isMatch) {
-      user.failedLoginAttempts += 1;
-      if (user.failedLoginAttempts >= 5) {
-        user.accountLockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+      const updates = {
+        failedLoginAttempts: user.failedLoginAttempts + 1,
+      };
+      if (user.failedLoginAttempts + 1 >= 5) {
+        updates.accountLockedUntil = new Date(Date.now() + 15 * 60 * 1000);
       }
-      await user.save();
+      await db.update("User", { id: user.id }, updates);
       await audit.logLogin(user.id, "FAILED", req, { reason: "invalid_password" });
       return res.status(401).json({ success: false, message: "Invalid credentials" });
     }
 
-    user.failedLoginAttempts = 0;
-    user.accountLockedUntil = null;
-    user.lastLoginAt = new Date();
-    user.lastLoginIp = req.ip || req.connection?.remoteAddress;
-    await user.save();
+    await db.update("User", { id: user.id }, {
+      failedLoginAttempts: 0,
+      accountLockedUntil: null,
+      lastLoginAt: new Date(),
+      lastLoginIp: req.ip || req.connection?.remoteAddress,
+    });
 
     if (user.twoFactorEnabled) {
       const tempToken = jwt.generateAccessToken({ ...user.toJSON(), twoFactorVerified: false });
@@ -149,7 +138,7 @@ router.post("/login", loginLimiter, loginValidation, handleValidationErrors, asy
     const refreshToken = jwt.generateRefreshToken();
     const expiresAt = jwt.calculateTokenExpiry(jwt.REFRESH_TOKEN_EXPIRES_IN);
 
-    await RefreshToken.create({
+    await db.create("RefreshToken", {
       userId: user.id,
       token: refreshToken,
       expiresAt,
@@ -177,13 +166,12 @@ router.post("/login", loginLimiter, loginValidation, handleValidationErrors, asy
 
 router.post("/logout", isAuthenticated, async (req, res, next) => {
   try {
-    initializeModels();
     const userId = req.user?.id;
 
     if (userId) {
       const token = jwt.getTokenFromRequest(req);
       if (token) {
-        await RefreshToken.update({ isRevoked: true }, { where: { userId } });
+        await db.update("RefreshToken", { userId }, { isRevoked: true });
       }
       await audit.logLogout(userId, req);
     }
@@ -202,23 +190,24 @@ router.post("/logout", isAuthenticated, async (req, res, next) => {
 
 router.post("/refresh", async (req, res, next) => {
   try {
-    initializeModels();
     const { refreshToken } = req.body;
 
     if (!refreshToken) {
       return res.status(400).json({ success: false, message: "Refresh token required" });
     }
 
-    const tokenRecord = await RefreshToken.findOne({
-      where: { token: refreshToken, isRevoked: false },
-      include: [{ model: User, as: "user" }],
-    });
+    const tokenRecord = await db.findOne("RefreshToken", { token: refreshToken, isRevoked: false });
 
     if (!tokenRecord || tokenRecord.isExpired()) {
       return res.status(401).json({ success: false, message: "Invalid or expired refresh token" });
     }
 
-    const user = tokenRecord.user;
+    const user = await db.findById("User", tokenRecord.userId);
+
+    if (!user) {
+      return res.status(401).json({ success: false, message: "User not found" });
+    }
+
     const newAccessToken = jwt.generateAccessToken(user);
 
     res.status(200).json({
@@ -237,17 +226,11 @@ router.post(
   handleValidationErrors,
   async (req, res, next) => {
     try {
-      initializeModels();
       const { token } = req.body;
 
-      const user = await User.findOne({
-        where: {
-          emailVerificationToken: token,
-          emailVerificationExpires: { [sequelize.Sequelize.Op.gt]: new Date() },
-        },
-      });
+      const user = await db.findOne("User", { emailVerificationToken: token });
 
-      if (!user) {
+      if (!user || !user.emailVerificationExpires || user.emailVerificationExpires <= new Date()) {
         await audit.logEmailVerification(null, "FAILED", req);
         return res.status(400).json({
           success: false,
@@ -255,10 +238,11 @@ router.post(
         });
       }
 
-      user.emailVerified = true;
-      user.emailVerificationToken = null;
-      user.emailVerificationExpires = null;
-      await user.save();
+      await db.update("User", { id: user.id }, {
+        emailVerified: true,
+        emailVerificationToken: null,
+        emailVerificationExpires: null,
+      });
 
       await audit.logEmailVerification(user.id, "SUCCESS", req);
 
@@ -279,10 +263,9 @@ router.post(
   handleValidationErrors,
   async (req, res, next) => {
     try {
-      initializeModels();
       const { email: userEmail } = req.body;
 
-      const user = await User.findOne({ where: { email: userEmail } });
+      const user = await db.findOne("User", { email: userEmail });
 
       if (!user) {
         return res.status(200).json({
@@ -294,9 +277,10 @@ router.post(
       const resetToken = crypto.randomBytes(32).toString("hex");
       const resetExpires = new Date(Date.now() + 60 * 60 * 1000);
 
-      user.passwordResetToken = resetToken;
-      user.passwordResetExpires = resetExpires;
-      await user.save();
+      await db.update("User", { id: user.id }, {
+        passwordResetToken: resetToken,
+        passwordResetExpires: resetExpires,
+      });
 
       const baseUrl = process.env.BASE_URL || "http://localhost:3000";
       await email.sendPasswordResetEmail(userEmail, user.username, resetToken, baseUrl);
@@ -319,17 +303,11 @@ router.post(
   handleValidationErrors,
   async (req, res, next) => {
     try {
-      initializeModels();
       const { token, password } = req.body;
 
-      const user = await User.findOne({
-        where: {
-          passwordResetToken: token,
-          passwordResetExpires: { [sequelize.Sequelize.Op.gt]: new Date() },
-        },
-      });
+      const user = await db.findOne("User", { passwordResetToken: token });
 
-      if (!user) {
+      if (!user || !user.passwordResetExpires || user.passwordResetExpires <= new Date()) {
         await audit.logPasswordReset(null, "FAILED", req);
         return res.status(400).json({
           success: false,
@@ -338,14 +316,16 @@ router.post(
       }
 
       const hashedPassword = await bcrypt.hashPassword(password);
-      user.password = hashedPassword;
-      user.passwordResetToken = null;
-      user.passwordResetExpires = null;
-      user.failedLoginAttempts = 0;
-      user.accountLockedUntil = null;
-      await user.save();
 
-      await RefreshToken.update({ isRevoked: true }, { where: { userId: user.id } });
+      await db.update("User", { id: user.id }, {
+        password: hashedPassword,
+        passwordResetToken: null,
+        passwordResetExpires: null,
+        failedLoginAttempts: 0,
+        accountLockedUntil: null,
+      });
+
+      await db.update("RefreshToken", { userId: user.id }, { isRevoked: true });
 
       if (user.email) {
         await email.sendPasswordChangedEmail(user.email, user.username);
@@ -370,11 +350,10 @@ router.post(
   handleValidationErrors,
   async (req, res, next) => {
     try {
-      initializeModels();
       const { currentPassword, newPassword } = req.body;
       const userId = req.user.id;
 
-      const user = await User.findByPk(userId);
+      const user = await db.findById("User", userId);
 
       if (!user) {
         return res.status(404).json({ success: false, message: "User not found" });
@@ -391,10 +370,10 @@ router.post(
       }
 
       const hashedPassword = await bcrypt.hashPassword(newPassword);
-      user.password = hashedPassword;
-      await user.save();
 
-      await RefreshToken.update({ isRevoked: true }, { where: { userId: user.id } });
+      await db.update("User", { id: user.id }, { password: hashedPassword });
+
+      await db.update("RefreshToken", { userId: user.id }, { isRevoked: true });
 
       if (user.email) {
         await email.sendPasswordChangedEmail(user.email, user.username);

@@ -1,4 +1,4 @@
-const jwt = require("jsonwebtoken");
+const jwtUtil = require("../utils/jwt");
 
 const isAuthenticated = (req, res, next) => {
   if (req.isAuthenticated && req.isAuthenticated()) {
@@ -11,7 +11,7 @@ const isAuthenticated = (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwtUtil.verifyAccessToken(token);
     req.user = decoded;
     next();
   } catch (err) {

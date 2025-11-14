@@ -5,22 +5,24 @@ require("dotenv").config({ path: path.join(__dirname, '..', '.env') });
 const dbType = process.env.DB_TYPE || "postgres";
 
 if (dbType === "mongodb") {
-  module.exports = require("../schemas/Session");
+  module.exports = require("../schemas/DeviceFingerprint");
 } else {
   const { Model } = require("sequelize");
 
   module.exports = (sequelize, DataTypes) => {
-    class Session extends Model {
+    class DeviceFingerprint extends Model {
       static associate(models) {
-        Session.belongsTo(models.User, { foreignKey: "userId", as: "user" });
+        DeviceFingerprint.belongsTo(models.User, { foreignKey: "userId", as: "user" });
       }
 
       isExpired() {
-        return Date.now() >= this.expiresAt.getTime();
+        if (!this.lastSeenAt) return true;
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        return this.lastSeenAt < thirtyDaysAgo;
       }
     }
 
-    Session.init(
+    DeviceFingerprint.init(
       {
         id: {
           type: DataTypes.UUID,
@@ -36,41 +38,57 @@ if (dbType === "mongodb") {
           },
           onDelete: "CASCADE",
         },
-        sessionId: {
+        fingerprint: {
           type: DataTypes.STRING,
           allowNull: false,
           unique: true,
         },
-        expiresAt: {
-          type: DataTypes.DATE,
-          allowNull: false,
-        },
-        deviceInfo: {
-          type: DataTypes.JSONB,
-          allowNull: true,
-        },
-        ipAddress: {
+        deviceName: {
           type: DataTypes.STRING,
           allowNull: true,
         },
-        lastActivityAt: {
+        deviceType: {
+          type: DataTypes.STRING,
+          allowNull: true,
+        },
+        browser: {
+          type: DataTypes.STRING,
+          allowNull: true,
+        },
+        os: {
+          type: DataTypes.STRING,
+          allowNull: true,
+        },
+        trusted: {
+          type: DataTypes.BOOLEAN,
+          defaultValue: false,
+        },
+        lastSeenAt: {
           type: DataTypes.DATE,
+          allowNull: true,
+        },
+        lastIpAddress: {
+          type: DataTypes.STRING,
+          allowNull: true,
+        },
+        metadata: {
+          type: DataTypes.JSONB,
           allowNull: true,
         },
       },
       {
         sequelize,
-        modelName: "Session",
-        tableName: "sessions",
+        modelName: "DeviceFingerprint",
+        tableName: "device_fingerprints",
         timestamps: true,
         indexes: [
           { fields: ["userId"] },
-          { fields: ["sessionId"] },
-          { fields: ["expiresAt"] },
+          { fields: ["fingerprint"] },
+          { fields: ["trusted"] },
         ],
       }
     );
 
-    return Session;
+    return DeviceFingerprint;
   };
 }

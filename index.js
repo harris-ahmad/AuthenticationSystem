@@ -5,33 +5,51 @@ const passport = require("passport");
 const helmet = require("helmet");
 const passportConfig = require("./utils/passport");
 const emailService = require("./utils/email");
+const { loadConfig } = require("./utils/configLoader");
+const { initializeDatabase } = require("./utils/database");
 
 const authRoutes = require("./routes/auth");
 const twoFactorRoutes = require("./routes/twoFactor");
 const oauthRoutes = require("./routes/oauth");
+const webauthnRoutes = require("./routes/webauthn");
 const profileRoutes = require("./routes/profile");
+const riskRoutes = require("./routes/risk");
 const indexRouter = require("./routes/index");
 
 const { apiLimiter } = require("./middleware/rateLimiter");
 const { csrfProtection, csrfTokenGenerator } = require("./middleware/csrf");
 
-module.exports = function (app, options = {}) {
+module.exports = async function (app, options = {}) {
+  const config = loadConfig(options);
+
   const {
     sessionSecret,
-    usernameField = "username",
-    passwordField = "password",
-    enableHelmet = true,
-    enableCsrf = false,
-    enableRateLimiting = true,
-    emailConfig = null,
-    googleClientID = null,
-    googleClientSecret = null,
-    googleCallbackURL = null,
-    githubClientID = null,
-    githubClientSecret = null,
-    githubCallbackURL = null,
-    customMiddleware = [],
-  } = options;
+    usernameField,
+    passwordField,
+    enableHelmet,
+    enableCsrf,
+    enableRateLimiting,
+    emailConfig,
+    googleClientID,
+    googleClientSecret,
+    googleCallbackURL,
+    githubClientID,
+    githubClientSecret,
+    githubCallbackURL,
+    customMiddleware,
+    database,
+  } = config;
+
+  if (database) {
+    try {
+      await initializeDatabase(database);
+    } catch (error) {
+      console.error("Failed to initialize database:", error.message);
+      if (database.required !== false) {
+        throw error;
+      }
+    }
+  }
 
   if (!sessionSecret) {
     console.warn("Warning: sessionSecret is required for production use");
@@ -94,6 +112,8 @@ module.exports = function (app, options = {}) {
   app.use("/auth", enableCsrf ? csrfProtection : (req, res, next) => next(), authRoutes);
   app.use("/auth/2fa", twoFactorRoutes);
   app.use("/auth/oauth", oauthRoutes);
+  app.use("/auth/webauthn", webauthnRoutes);
+  app.use("/risk", riskRoutes);
   app.use("/profile", profileRoutes);
   app.use("/", indexRouter);
 

@@ -3,8 +3,7 @@ const router = express.Router();
 const twoFactor = require("../utils/twoFactor");
 const jwt = require("../utils/jwt");
 const audit = require("../utils/audit");
-const sequelize = require("../utils/sequelize");
-const { DataTypes } = require("sequelize");
+const db = require("../common/db");
 const { isAuthenticated } = require("../middleware/auth");
 const { twoFactorLimiter } = require("../middleware/rateLimiter");
 const {
@@ -13,18 +12,11 @@ const {
   handleValidationErrors,
 } = require("../middleware/validation");
 
-let User;
-
-const initializeModels = () => {
-  if (!User) User = require("../models/user")(sequelize, DataTypes);
-};
-
 router.post("/setup", isAuthenticated, async (req, res, next) => {
   try {
-    initializeModels();
     const userId = req.user.id;
 
-    const user = await User.findByPk(userId);
+    const user = await db.findById("User", userId);
 
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
@@ -41,8 +33,7 @@ router.post("/setup", isAuthenticated, async (req, res, next) => {
     const qrCode = await twoFactor.generateQRCode(secret.otpauth_url);
     const backupCodes = twoFactor.generateBackupCodes();
 
-    user.twoFactorSecret = secret.base32;
-    await user.save();
+    await db.update("User", { id: user.id }, { twoFactorSecret: secret.base32 });
 
     res.status(200).json({
       success: true,
@@ -64,11 +55,10 @@ router.post(
   handleValidationErrors,
   async (req, res, next) => {
     try {
-      initializeModels();
       const { token } = req.body;
       const userId = req.user.id;
 
-      const user = await User.findByPk(userId);
+      const user = await db.findById("User", userId);
 
       if (!user || !user.twoFactorSecret) {
         return res.status(400).json({
@@ -87,8 +77,7 @@ router.post(
         });
       }
 
-      user.twoFactorEnabled = true;
-      await user.save();
+      await db.update("User", { id: user.id }, { twoFactorEnabled: true });
 
       await audit.log2FAEnable(userId, "SUCCESS", req);
 
@@ -109,7 +98,6 @@ router.post(
   handleValidationErrors,
   async (req, res, next) => {
     try {
-      initializeModels();
       const { token, tempToken } = req.body;
 
       if (!tempToken) {
@@ -129,7 +117,7 @@ router.post(
         });
       }
 
-      const user = await User.findByPk(decoded.id);
+      const user = await db.findById("User", decoded.id);
 
       if (!user || !user.twoFactorEnabled) {
         return res.status(400).json({
@@ -152,8 +140,7 @@ router.post(
       const refreshToken = jwt.generateRefreshToken();
       const expiresAt = jwt.calculateTokenExpiry(jwt.REFRESH_TOKEN_EXPIRES_IN);
 
-      const RefreshToken = require("../models/refreshToken")(sequelize, DataTypes);
-      await RefreshToken.create({
+      await db.create("RefreshToken", {
         userId: user.id,
         token: refreshToken,
         expiresAt,
@@ -178,10 +165,9 @@ router.post(
 
 router.post("/disable", isAuthenticated, async (req, res, next) => {
   try {
-    initializeModels();
     const userId = req.user.id;
 
-    const user = await User.findByPk(userId);
+    const user = await db.findById("User", userId);
 
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
@@ -194,9 +180,10 @@ router.post("/disable", isAuthenticated, async (req, res, next) => {
       });
     }
 
-    user.twoFactorEnabled = false;
-    user.twoFactorSecret = null;
-    await user.save();
+    await db.update("User", { id: user.id }, {
+      twoFactorEnabled: false,
+      twoFactorSecret: null,
+    });
 
     await audit.log2FADisable(userId, "SUCCESS", req);
 
