@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authentication System - Complete Test</title>
+    <script src="https://unpkg.com/@simplewebauthn/browser@9.0.1/dist/bundle/index.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 { color: #333; text-align: center; }
+        h2 { color: #555; border-bottom: 2px solid #ddd; padding-bottom: 10px; }
+        .section {
+            background: white;
+            margin: 20px 0;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            margin: 5px 5px 5px 0;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .success {
+            color: #28a745;
+            background: #d4edda;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .info {
+            color: #004085;
+            background: #cce5ff;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+            border: 1px solid #dee2e6;
+        }
+        .user-info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .credential-item {
+            background: #f8f9fa;
+            padding: 12px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border-left: 3px solid #007bff;
+        }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <h1>Authentication System Test Suite</h1>
+
+    <div class="section">
+        <h2>Current Session</h2>
+        <div id="sessionInfo" class="info">Not logged in</div>
+        <button onclick="logout()">Logout</button>
+    </div>
+
+    <div class="section">
+        <h2>Step 1: Register New User</h2>
+        <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="regUsername" placeholder="testuser">
+        </div>
+        <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="regEmail" placeholder="test@example.com">
+        </div>
+        <div class="form-group">
+            <label>Password (min 8 chars, must have uppercase, lowercase, number, special char)</label>
+            <input type="password" id="regPassword" placeholder="Test123!@#">
+        </div>
+        <button onclick="register()">Register User</button>
+        <div id="regResult"></div>
+    </div>
+
+    <div class="section">
+        <h2>Step 2: Login with Password</h2>
+        <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="loginUsername" placeholder="testuser">
+        </div>
+        <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="loginPassword" placeholder="Test123!@#">
+        </div>
+        <button onclick="loginWithPassword()">Login with Password</button>
+        <div id="loginResult"></div>
+    </div>
+
+    <div class="section">
+        <h2>Step 3: Register Passkey</h2>
+        <p class="info">After logging in, register a passkey for biometric authentication (Touch ID, Face ID, Windows Hello, etc.)</p>
+        <div class="form-group">
+            <label>Passkey Name (optional)</label>
+            <input type="text" id="passkeyName" placeholder="My MacBook Pro">
+        </div>
+        <button onclick="registerPasskey()">Register Passkey</button>
+        <div id="passkeyRegResult"></div>
+    </div>
+
+    <div class="section">
+        <h2>Step 4: Login with Passkey</h2>
+        <p class="info">Test passwordless authentication - no password needed!</p>
+        <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="passkeyLoginUsername" placeholder="testuser">
+        </div>
+        <button onclick="loginWithPasskey()">Login with Passkey</button>
+        <div id="passkeyLoginResult"></div>
+    </div>
+
+    <div class="section">
+        <h2>My Passkeys</h2>
+        <button onclick="listPasskeys()">List My Passkeys</button>
+        <div id="passkeysList"></div>
+    </div>
+
+    <div class="section">
+        <h2>Risk Assessment</h2>
+        <button onclick="getRiskHistory()">View Risk History</button>
+        <button onclick="getDevices()">View Trusted Devices</button>
+        <div id="riskInfo"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3000';
+        const { startRegistration, startAuthentication } = SimpleWebAuthnBrowser;
+
+        let currentUser = null;
+        let accessToken = null;
+        let refreshToken = null;
+
+        function updateSessionInfo() {
+            const sessionDiv = document.getElementById('sessionInfo');
+            if (currentUser && accessToken) {
+                sessionDiv.innerHTML = `
+                    <div class="user-info">
+                        <strong>Logged in as:</strong> ${currentUser.username}<br>
+                        <strong>Email:</strong> ${currentUser.email || 'Not provided'}<br>
+                        <strong>Role:</strong> ${currentUser.role}<br>
+                        <strong>Access Token:</strong> <code>${accessToken.substring(0, 20)}...</code>
+                    </div>
+                `;
+                sessionDiv.className = 'success';
+            } else {
+                sessionDiv.innerHTML = 'Not logged in';
+                sessionDiv.className = 'info';
+            }
+        }
+
+        async function register() {
+            const username = document.getElementById('regUsername').value;
+            const email = document.getElementById('regEmail').value;
+            const password = document.getElementById('regPassword').value;
+            const resultDiv = document.getElementById('regResult');
+
+            try {
+                resultDiv.innerHTML = '<div class="info">Registering user...</div>';
+
+                const res = await fetch(`${API_URL}/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, email, password }),
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            User registered successfully!<br>
+                            You can now login with password or setup a passkey.
+                        </div>
+                        <pre>${JSON.stringify(data.user, null, 2)}</pre>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<div class="error">${data.message}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function loginWithPassword() {
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+            const resultDiv = document.getElementById('loginResult');
+
+            try {
+                resultDiv.innerHTML = '<div class="info">Logging in...</div>';
+
+                const res = await fetch(`${API_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password }),
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    currentUser = data.user;
+                    accessToken = data.accessToken;
+                    refreshToken = data.refreshToken;
+                    updateSessionInfo();
+
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            Login successful!<br>
+                            Risk Score: ${data.riskScore} (${data.riskLevel})<br>
+                            ${data.riskFactors && data.riskFactors.length > 0 ?
+                                'Risk Factors: ' + data.riskFactors.join(', ') :
+                                'No risk factors detected'}
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<div class="error">${data.message}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function registerPasskey() {
+            if (!accessToken) {
+                document.getElementById('passkeyRegResult').innerHTML =
+                    '<div class="error">Please login first</div>';
+                return;
+            }
+
+            const name = document.getElementById('passkeyName').value || 'My Passkey';
+            const resultDiv = document.getElementById('passkeyRegResult');
+
+            try {
+                resultDiv.innerHTML = '<div class="info">Requesting registration options...</div>';
+
+                const optionsRes = await fetch(`${API_URL}/auth/webauthn/register/options`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json',
+                    },
+                });
+
+                const optionsData = await optionsRes.json();
+
+                if (!optionsData.success) {
+                    resultDiv.innerHTML = `<div class="error">${optionsData.message}</div>`;
+                    return;
+                }
+
+                resultDiv.innerHTML = '<div class="info">Please complete biometric authentication...</div>';
+
+                const attResp = await startRegistration(optionsData.options);
+
+                resultDiv.innerHTML = '<div class="info">Verifying passkey...</div>';
+
+                const verifyRes = await fetch(`${API_URL}/auth/webauthn/register/verify`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        response: attResp,
+                        credentialName: name,
+                    }),
+                });
+
+                const verifyData = await verifyRes.json();
+
+                if (verifyData.success) {
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            Passkey registered successfully!<br>
+                            You can now login without a password.
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<div class="error">${verifyData.message}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function loginWithPasskey() {
+            const username = document.getElementById('passkeyLoginUsername').value;
+            const resultDiv = document.getElementById('passkeyLoginResult');
+
+            try {
+                resultDiv.innerHTML = '<div class="info">Requesting authentication options...</div>';
+
+                const optionsRes = await fetch(`${API_URL}/auth/webauthn/login/options`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username }),
+                });
+
+                const optionsData = await optionsRes.json();
+
+                if (!optionsData.success) {
+                    resultDiv.innerHTML = `<div class="error">${optionsData.message}</div>`;
+                    return;
+                }
+
+                resultDiv.innerHTML = '<div class="info">Please complete biometric authentication...</div>';
+
+                const asseResp = await startAuthentication(optionsData.options);
+
+                resultDiv.innerHTML = '<div class="info">Verifying...</div>';
+
+                const verifyRes = await fetch(`${API_URL}/auth/webauthn/login/verify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        response: asseResp,
+                        username,
+                    }),
+                });
+
+                const verifyData = await verifyRes.json();
+
+                if (verifyData.success) {
+                    currentUser = verifyData.user;
+                    accessToken = verifyData.accessToken;
+                    refreshToken = verifyData.refreshToken;
+                    updateSessionInfo();
+
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            Passwordless login successful!<br>
+                            Risk Score: ${verifyData.riskScore} (${verifyData.riskLevel})<br>
+                            Notice the -20 risk score bonus for using passkey!
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<div class="error">${verifyData.message}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function listPasskeys() {
+            if (!accessToken) {
+                document.getElementById('passkeysList').innerHTML =
+                    '<div class="error">Please login first</div>';
+                return;
+            }
+
+            const resultDiv = document.getElementById('passkeysList');
+
+            try {
+                const res = await fetch(`${API_URL}/auth/webauthn/credentials`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` },
+                });
+
+                const data = await res.json();
+
+                if (data.credentials && data.credentials.length > 0) {
+                    let html = '';
+                    data.credentials.forEach(cred => {
+                        html += `
+                            <div class="credential-item">
+                                <strong>${cred.name || 'Unnamed Passkey'}</strong><br>
+                                Device Type: ${cred.credentialDeviceType || 'Unknown'}<br>
+                                Created: ${new Date(cred.createdAt).toLocaleString()}<br>
+                                Last Used: ${cred.lastUsedAt ? new Date(cred.lastUsedAt).toLocaleString() : 'Never'}
+                            </div>
+                        `;
+                    });
+                    resultDiv.innerHTML = html;
+                } else {
+                    resultDiv.innerHTML = '<div class="info">No passkeys registered</div>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function getRiskHistory() {
+            if (!accessToken) {
+                document.getElementById('riskInfo').innerHTML =
+                    '<div class="error">Please login first</div>';
+                return;
+            }
+
+            const resultDiv = document.getElementById('riskInfo');
+
+            try {
+                const res = await fetch(`${API_URL}/risk/history`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` },
+                });
+
+                const data = await res.json();
+
+                if (data.history && data.history.length > 0) {
+                    resultDiv.innerHTML = '<h3>Risk Assessment History</h3><pre>' +
+                        JSON.stringify(data.history, null, 2) + '</pre>';
+                } else {
+                    resultDiv.innerHTML = '<div class="info">No risk history available</div>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function getDevices() {
+            if (!accessToken) {
+                document.getElementById('riskInfo').innerHTML =
+                    '<div class="error">Please login first</div>';
+                return;
+            }
+
+            const resultDiv = document.getElementById('riskInfo');
+
+            try {
+                const res = await fetch(`${API_URL}/risk/devices`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` },
+                });
+
+                const data = await res.json();
+
+                if (data.devices && data.devices.length > 0) {
+                    resultDiv.innerHTML = '<h3>Trusted Devices</h3><pre>' +
+                        JSON.stringify(data.devices, null, 2) + '</pre>';
+                } else {
+                    resultDiv.innerHTML = '<div class="info">No trusted devices found</div>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        function logout() {
+            currentUser = null;
+            accessToken = null;
+            refreshToken = null;
+            updateSessionInfo();
+            document.getElementById('sessionInfo').innerHTML = 'Logged out successfully';
+            document.getElementById('sessionInfo').className = 'info';
+        }
+
+        updateSessionInfo();
+    </script>
+</body>
+</html>
